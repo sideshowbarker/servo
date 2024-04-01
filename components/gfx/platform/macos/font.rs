@@ -298,7 +298,14 @@ impl FontHandleMethods for FontHandle {
             .unwrap_or(max_advance);
 
         let underline_size = au_from_pt(self.ctfont.underline_thickness());
-        let x_height = au_from_pt(self.ctfont.x_height() * scale);
+
+        println!("scale: {:?}", scale);
+        println!(
+            "x height {:?} units per em: {:?}",
+            self.ctfont.x_height(),
+            self.ctfont.units_per_em()
+        );
+        let x_height = Au::from_f64_px(self.ctfont.x_height());
 
         let metrics = FontMetrics {
             underline_size,
@@ -316,8 +323,8 @@ impl FontHandleMethods for FontHandle {
             leading: au_from_pt(leading),
             x_height,
             em_size,
-            ascent: au_from_pt(ascent * scale),
-            descent: au_from_pt(descent * scale),
+            ascent: Au::from_f64_px(ascent),
+            descent: Au::from_f64_px(descent),
             max_advance,
             average_advance,
             line_gap: Au::from_f64_px(line_gap),

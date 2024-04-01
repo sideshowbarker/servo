@@ -22,7 +22,7 @@ use euclid::{Point2D, Scale, Size2D, Vector2D};
 use fnv::FnvHashMap;
 use fxhash::FxHashMap;
 use gfx::font_cache_thread::FontCacheThread;
-use gfx::font_context;
+use gfx::font_context::{self, FontContext};
 use gfx_traits::{node_id_from_scroll_id, Epoch};
 use ipc_channel::ipc::{self, IpcSender};
 use ipc_channel::router::ROUTER;
@@ -72,12 +72,14 @@ use style::context::{
 use style::dom::{OpaqueNode, TElement, TNode};
 use style::driver;
 use style::error_reporting::RustLogReporter;
+use style::font_metrics::FontMetrics;
 use style::global_style_data::{GLOBAL_STYLE_DATA, STYLE_THREAD_POOL};
 use style::invalidation::element::restyle_hints::RestyleHint;
 use style::media_queries::{Device, MediaList, MediaType};
 use style::properties::style_structs::Font;
 use style::properties::PropertyId;
 use style::selector_parser::{PseudoElement, SnapshotMap};
+use style::servo::media_queries::FontMetricsProvider;
 use style::shared_lock::{SharedRwLock, SharedRwLockReadGuard, StylesheetGuards};
 use style::stylesheets::{
     DocumentStyleSheet, Origin, Stylesheet, StylesheetInDocument, UrlExtraData,
@@ -86,6 +88,7 @@ use style::stylesheets::{
 use style::stylist::Stylist;
 use style::traversal::DomTraversal;
 use style::traversal_flags::TraversalFlags;
+use style::values::computed::CSSPixelLength;
 use style_traits::{CSSPixel, DevicePixel, SpeculativePainter};
 use url::Url;
 use webrender_api::units::LayoutPixel;
@@ -122,6 +125,9 @@ pub struct LayoutThread {
 
     /// Public interface to the font cache thread.
     font_cache_thread: FontCacheThread,
+
+    /// A FontContext to be used for font operations.
+    font_context: Arc<Mutex<FontContext<FontCacheThread>>>,
 
     /// Is this the first reflow in this LayoutThread?
     first_reflow: Cell<bool>,
@@ -235,6 +241,10 @@ impl Layout for LayoutThread {
 
     fn handle_font_cache_msg(&mut self) {
         self.handle_request(Request::FromFontCache);
+    }
+
+    fn device<'a>(&'a self) -> &'a Device {
+        self.stylist.device()
     }
 
     fn waiting_for_web_fonts_to_load(&self) -> bool {
@@ -449,11 +459,13 @@ impl LayoutThread {
 
         // The device pixel ratio is incorrect (it does not have the hidpi value),
         // but it will be set correctly when the initial reflow takes place.
+        let font_context = Arc::new(Mutex::new(FontContext::new(font_cache_thread.clone())));
         let device = Device::new(
             MediaType::screen(),
             QuirksMode::NoQuirks,
             window_size.initial_viewport,
             window_size.device_pixel_ratio,
+            Box::new(LayoutFontMetricsProvider(font_context.clone())),
         );
 
         // Ask the router to proxy IPC messages from the font cache thread to layout.
@@ -477,6 +489,7 @@ impl LayoutThread {
             registered_painters: RegisteredPaintersImpl(Default::default()),
             image_cache,
             font_cache_thread,
+            font_context,
             first_reflow: Cell::new(true),
             font_cache_sender: ipc_font_cache_sender,
             generation: Cell::new(0),
@@ -547,7 +560,7 @@ impl LayoutThread {
                 traversal_flags,
             ),
             image_cache: self.image_cache.clone(),
-            font_cache_thread: Mutex::new(self.font_cache_thread.clone()),
+            font_context: self.font_context.clone(),
             webrender_image_cache: self.webrender_image_cache.clone(),
             pending_images: Mutex::new(vec![]),
             use_rayon,
@@ -1102,6 +1115,7 @@ impl LayoutThread {
             self.stylist.quirks_mode(),
             window_size_data.initial_viewport,
             window_size_data.device_pixel_ratio,
+            Box::new(LayoutFontMetricsProvider(self.font_context.clone())),
         );
 
         // Preserve any previously computed root font size.
@@ -1258,3 +1272,40 @@ impl RegisteredSpeculativePainters for RegisteredPaintersImpl {
             .map(|painter| painter as &dyn RegisteredSpeculativePainter)
     }
 }
+
+#[derive(Debug)]
+struct LayoutFontMetricsProvider(Arc<Mutex<FontContext<FontCacheThread>>>);
+
+impl FontMetricsProvider for LayoutFontMetricsProvider {
+    fn query_font_metrics(
+        &self,
+        _vertical: bool,
+        font: &Font,
+        base_size: style::values::computed::CSSPixelLength,
+        _in_media_query: bool,
+        _retrieve_math_scales: bool,
+    ) -> style::font_metrics::FontMetrics {
+        let mut font_context = self.0.lock().unwrap();
+        let Some(servo_metrics) = font_context
+            .font_group_with_size(ServoArc::new(font.clone()), base_size.px())
+            .borrow_mut()
+            .first(&mut font_context)
+            .map(|font| font.borrow().metrics.clone())
+        else {
+            return Default::default();
+        };
+
+        FontMetrics {
+            x_height: Some(CSSPixelLength::new(servo_metrics.x_height.to_f32_px())),
+            zero_advance_measure: None,
+            cap_height: None,
+            ic_width: None,
+            ascent: CSSPixelLength::new(servo_metrics.ascent.to_f32_px()),
+            script_percent_scale_down: None,
+            script_script_percent_scale_down: None,
+        }
+    }
+}
+
+unsafe impl Send for LayoutFontMetricsProvider {}
+unsafe impl Sync for LayoutFontMetricsProvider {}

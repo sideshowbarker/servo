@@ -1,8 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+#![allow(unsafe_code)]
 
-use std::cell::RefCell;
 use std::sync::{Arc, Mutex};
 
 use fnv::FnvHashMap;
@@ -28,8 +28,8 @@ pub struct LayoutContext<'a> {
     /// Bits shared by the layout and style system.
     pub style_context: SharedStyleContext<'a>,
 
-    /// Interface to the font cache thread.
-    pub font_cache_thread: Mutex<FontCacheThread>,
+    /// A FontContext to be used during layout.
+    pub font_context: Arc<Mutex<FontContext<FontCacheThread>>>,
 
     /// Reference to the script thread image cache.
     pub image_cache: Arc<dyn ImageCache>,
@@ -40,6 +40,9 @@ pub struct LayoutContext<'a> {
     pub webrender_image_cache:
         Arc<RwLock<FnvHashMap<(ServoUrl, UsePlaceholder), WebRenderImageInfo>>>,
 }
+
+unsafe impl<'a> Send for LayoutContext<'a> {}
+unsafe impl<'a> Sync for LayoutContext<'a> {}
 
 impl<'a> Drop for LayoutContext<'a> {
     fn drop(&mut self) {
@@ -131,19 +134,11 @@ impl<'a> LayoutContext<'a> {
             None | Some(ImageOrMetadataAvailable::MetadataAvailable(_)) => None,
         }
     }
-}
 
-pub(crate) type LayoutFontContext = FontContext<FontCacheThread>;
-
-thread_local!(static FONT_CONTEXT: RefCell<Option<LayoutFontContext>> = RefCell::new(None));
-
-pub(crate) fn with_thread_local_font_context<F, R>(layout_context: &LayoutContext, f: F) -> R
-where
-    F: FnOnce(&mut LayoutFontContext) -> R,
-{
-    FONT_CONTEXT.with(|font_context| {
-        f(font_context.borrow_mut().get_or_insert_with(|| {
-            FontContext::new(layout_context.font_cache_thread.lock().unwrap().clone())
-        }))
-    })
+    pub fn with_font_context<F, R>(&self, callback: F) -> R
+    where
+        F: FnOnce(&mut FontContext<FontCacheThread>) -> R,
+    {
+        callback(&mut self.font_context.lock().unwrap())
+    }
 }
