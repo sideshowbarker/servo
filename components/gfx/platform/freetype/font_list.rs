@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+use std::convert::TryInto;
 use std::ffi::CString;
 use std::fs::File;
 use std::io::Read;
@@ -44,6 +45,10 @@ impl LocalFontIdentifier {
             // TODO: Shouldn't this be using the variation index from the LocalFontIdentifier?
             index: 0,
         })
+    }
+
+    pub(crate) fn index(&self) -> u32 {
+        self.variation_index.try_into().unwrap()
     }
 
     pub(crate) fn read_data_from_file(&self) -> Vec<u8> {

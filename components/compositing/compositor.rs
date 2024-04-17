@@ -877,16 +877,14 @@ impl<Window: WindowMethods + ?Sized> IOCompositor<Window> {
                 let _ = sender.send(key);
             },
 
-            ForwardedToCompositorMsg::Font(FontToCompositorMsg::AddFont(data, sender)) => {
+            ForwardedToCompositorMsg::Font(FontToCompositorMsg::AddFont(key_sender, index, bytes_receiver)) => {
                 let font_key = self.webrender_api.generate_font_key();
                 let mut txn = Transaction::new();
-                match data {
-                    FontData::Raw(bytes) => txn.add_raw_font(font_key, bytes, 0),
-                    FontData::Native(native_font) => txn.add_native_font(font_key, native_font),
-                }
-                self.webrender_api
-                    .send_transaction(self.webrender_document, txn);
-                let _ = sender.send(font_key);
+                let bytes = bytes_receiver.recv().unwrap();
+                println!("Compositor: AddFont with index {index}");
+                txn.add_raw_font(font_key, bytes, index);
+                self.webrender_api.send_transaction(self.webrender_document, txn);
+                let _ = key_sender.send(font_key);
             },
 
             ForwardedToCompositorMsg::Canvas(CanvasToCompositorMsg::GenerateKey(sender)) => {
@@ -938,7 +936,7 @@ impl<Window: WindowMethods + ?Sized> IOCompositor<Window> {
                 let _ = sender.send(self.webrender_api.generate_font_instance_key());
             },
             CompositorMsg::Forwarded(ForwardedToCompositorMsg::Font(
-                FontToCompositorMsg::AddFont(_, sender),
+                FontToCompositorMsg::AddFont(sender, _, _),
             )) => {
                 let _ = sender.send(self.webrender_api.generate_font_key());
             },

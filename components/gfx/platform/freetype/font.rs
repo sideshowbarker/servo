@@ -28,7 +28,7 @@ use crate::font::{
     KERN,
 };
 use crate::font_cache_thread::FontIdentifier;
-use crate::font_template::FontTemplateRef;
+use crate::font_template::{FontTemplateRef, FontTemplateRefMethods};
 use crate::text::glyph::GlyphId;
 use crate::text::util::fixed_to_float;
 
@@ -100,38 +100,17 @@ impl Drop for PlatformFont {
 fn create_face(template: &FontTemplateRef, pt_size: Option<Au>) -> Result<FT_Face, &'static str> {
     unsafe {
         let mut face: FT_Face = ptr::null_mut();
-        let face_index = 0 as FT_Long;
+        let face_index = template.borrow().identifier().index();
         let library = FreeTypeLibraryHandle::get().lock();
+        let bytes = template.data();
 
-        let result = match template.borrow().identifier {
-            FontIdentifier::Web(_) => {
-                let bytes = template
-                    .borrow()
-                    .data_if_in_memory()
-                    .expect("Web font should always have data.");
-                FT_New_Memory_Face(
-                    library.freetype_library,
-                    bytes.as_ptr(),
-                    bytes.len() as FT_Long,
-                    face_index,
-                    &mut face,
-                )
-            },
-            FontIdentifier::Local(ref local_identifier) => {
-                // This will trigger a synchronous file read during layout, which we may want to
-                // revisit at some point. See discussion here:
-                //
-                // https://github.com/servo/servo/pull/20506#issuecomment-378838800
-                let filename =
-                    CString::new(&*local_identifier.path).expect("filename contains NUL byte!");
-                FT_New_Face(
-                    library.freetype_library,
-                    filename.as_ptr(),
-                    face_index,
-                    &mut face,
-                )
-            },
-        };
+        let result = FT_New_Memory_Face(
+            library.freetype_library,
+            bytes.as_ptr(),
+            bytes.len() as FT_Long,
+            face_index.into(),
+            &mut face,
+        );
 
         if !succeeded(result) || face.is_null() {
             return Err("Could not create FreeType face");

@@ -59,6 +59,17 @@ pub enum FontIdentifier {
     Web(ServoUrl),
 }
 
+impl FontIdentifier {
+    pub fn index(&self) -> u32 {
+        let i = match *self {
+            Self::Local(ref local_font_identifier) => local_font_identifier.index(),
+            Self::Web(_) => 0
+        };
+        println!("FontIdentifier::index for {:?} = {i}", *self);
+        i
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct SerializedFontTemplate {
     identifier: FontIdentifier,
@@ -435,16 +446,13 @@ impl FontCache {
     fn get_font_key_for_template(&mut self, template: &FontTemplateRef) -> FontKey {
         let webrender_api = &self.webrender_api;
         let webrender_fonts = &mut self.webrender_fonts;
+        let identifier = template.borrow().identifier.clone();
+        let index = identifier.index();
         *webrender_fonts
-            .entry(template.borrow().identifier.clone())
+            .entry(identifier)
             .or_insert_with(|| {
-                let template = template.borrow();
-                let font = match (template.data_if_in_memory(), template.native_font_handle()) {
-                    (Some(bytes), _) => FontData::Raw((*bytes).clone()),
-                    (None, Some(native_font)) => FontData::Native(native_font),
-                    (None, None) => unreachable!("Font should either be local or a web font."),
-                };
-                webrender_api.add_font(font)
+                let bytes = template.data();
+                webrender_api.add_font(bytes, index)
             })
     }
 

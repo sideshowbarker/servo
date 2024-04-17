@@ -31,6 +31,10 @@ impl LocalFontIdentifier {
         })
     }
 
+    pub(crate) fn index(&self) -> u32 {
+        0
+    }
+
     pub(crate) fn read_data_from_file(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
         File::open(Path::new(&*self.path))
