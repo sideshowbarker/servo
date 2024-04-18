@@ -26,7 +26,7 @@ use webrender_api::FontInstanceKey;
 
 use crate::font_cache_thread::FontIdentifier;
 use crate::font_context::{FontContext, FontSource};
-use crate::font_template::{FontTemplateDescriptor, FontTemplateRef};
+use crate::font_template::{FontTemplateDescriptor, FontTemplateRef, FontTemplateRefMethods};
 use crate::platform::font::{FontTable, PlatformFont};
 pub use crate::platform::font_list::fallback_font_families;
 use crate::text::glyph::{ByteIndex, GlyphData, GlyphId, GlyphStore};
@@ -56,7 +56,12 @@ pub trait PlatformFontMethods: Sized {
     fn new_from_template(
         template: FontTemplateRef,
         pt_size: Option<Au>,
-    ) -> Result<Self, &'static str>;
+    ) -> Result<PlatformFont, &'static str> {
+        let data = template.data();
+        let face_index = template.borrow().identifier().index();
+        Self::new_from_data(data, face_index, pt_size)
+    }
+
     fn new_from_data(
         data: Arc<Vec<u8>>,
         face_index: u32,

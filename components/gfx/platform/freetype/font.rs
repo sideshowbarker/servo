@@ -122,15 +122,6 @@ fn create_face(
 }
 
 impl PlatformFontMethods for PlatformFont {
-    fn new_from_template(
-        template: FontTemplateRef,
-        pt_size: Option<Au>,
-    ) -> Result<PlatformFont, &'static str> {
-        let data = template.data();
-        let face_index = template.borrow().identifier().index();
-        Self::new_from_data(data, face_index, pt_size)
-    }
-
     fn new_from_data(
         data: Arc<Vec<u8>>,
         face_index: u32,
