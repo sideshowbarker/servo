@@ -57,6 +57,11 @@ pub trait PlatformFontMethods: Sized {
         template: FontTemplateRef,
         pt_size: Option<Au>,
     ) -> Result<Self, &'static str>;
+    fn new_from_data(
+        data: Arc<Vec<u8>>,
+        face_index: u32,
+        pt_size: Option<Au>,
+    ) -> Result<PlatformFont, &'static str>;
 
     fn family_name(&self) -> Option<String>;
     fn face_name(&self) -> Option<String>;
@@ -396,13 +401,18 @@ impl FontGroup {
     pub fn new(style: &FontStyleStruct) -> FontGroup {
         let descriptor = FontDescriptor::from(style);
 
-        let families = style
+        let families: SmallVec<[FontGroupFamily; 8]> = style
             .font_family
             .families
             .iter()
             .map(|family| FontGroupFamily::new(descriptor.clone(), family))
             .collect();
 
+        let family_names: Vec<&str> = families
+            .iter()
+            .map(|family| family.family_descriptor.name())
+            .collect();
+        println!("font group: {family_names:?}");
         FontGroup {
             descriptor,
             families,

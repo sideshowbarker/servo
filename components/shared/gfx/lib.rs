@@ -8,8 +8,8 @@
 
 pub mod print_tree;
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 use malloc_size_of_derive::MallocSizeOf;
 use range::{int_range_index, RangeIndex};

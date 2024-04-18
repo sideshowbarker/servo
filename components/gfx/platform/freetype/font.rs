@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-use std::ffi::CString;
 use std::os::raw::{c_char, c_long};
 use std::sync::Arc;
 use std::{mem, ptr};
@@ -11,8 +10,8 @@ use app_units::Au;
 use freetype::freetype::{
     FT_Done_Face, FT_F26Dot6, FT_Face, FT_FaceRec, FT_Get_Char_Index, FT_Get_Kerning,
     FT_Get_Postscript_Name, FT_Get_Sfnt_Table, FT_GlyphSlot, FT_Int32, FT_Kerning_Mode,
-    FT_Load_Glyph, FT_Load_Sfnt_Table, FT_Long, FT_New_Face, FT_New_Memory_Face, FT_Set_Char_Size,
-    FT_Sfnt_Tag, FT_SizeRec, FT_Size_Metrics, FT_UInt, FT_ULong, FT_Vector, FT_STYLE_FLAG_ITALIC,
+    FT_Load_Glyph, FT_Load_Sfnt_Table, FT_Long, FT_New_Memory_Face, FT_Set_Char_Size, FT_Sfnt_Tag,
+    FT_SizeRec, FT_Size_Metrics, FT_UInt, FT_ULong, FT_Vector, FT_STYLE_FLAG_ITALIC,
 };
 use freetype::succeeded;
 use freetype::tt_os2::TT_OS2;
@@ -27,7 +26,6 @@ use crate::font::{
     FontMetrics, FontTableMethods, FontTableTag, FractionalPixel, PlatformFontMethods, GPOS, GSUB,
     KERN,
 };
-use crate::font_cache_thread::FontIdentifier;
 use crate::font_template::{FontTemplateRef, FontTemplateRefMethods};
 use crate::text::glyph::GlyphId;
 use crate::text::util::fixed_to_float;
@@ -73,11 +71,8 @@ struct OS2Table {
 #[allow(unused)]
 pub struct PlatformFont {
     /// The font data itself, which must stay valid for the lifetime of the
-    /// platform [`FT_Face`], if it's created via [`FT_New_Memory_Face`]. A reference
-    /// to this data is also stored in the [`crate::font::Font`] that holds
-    /// this [`PlatformFont`], but if it's ever separated from it's font,
-    /// this ensures the data stays alive.
-    font_data: Option<Arc<Vec<u8>>>,
+    /// platform [`FT_Face`].
+    font_data: Arc<Vec<u8>>,
     face: FT_Face,
     can_do_fast_shaping: bool,
 }
@@ -97,17 +92,19 @@ impl Drop for PlatformFont {
     }
 }
 
-fn create_face(template: &FontTemplateRef, pt_size: Option<Au>) -> Result<FT_Face, &'static str> {
+fn create_face(
+    data: Arc<Vec<u8>>,
+    face_index: u32,
+    pt_size: Option<Au>,
+) -> Result<FT_Face, &'static str> {
     unsafe {
         let mut face: FT_Face = ptr::null_mut();
-        let face_index = template.borrow().identifier().index();
         let library = FreeTypeLibraryHandle::get().lock();
-        let bytes = template.data();
 
         let result = FT_New_Memory_Face(
             library.freetype_library,
-            bytes.as_ptr(),
-            bytes.len() as FT_Long,
+            data.as_ptr(),
+            data.len() as FT_Long,
             face_index.into(),
             &mut face,
         );
@@ -129,15 +126,27 @@ impl PlatformFontMethods for PlatformFont {
         template: FontTemplateRef,
         pt_size: Option<Au>,
     ) -> Result<PlatformFont, &'static str> {
-        let face = create_face(&template, pt_size)?;
+        let data = template.data();
+        let face_index = template.borrow().identifier().index();
+        Self::new_from_data(data, face_index, pt_size)
+    }
+
+    fn new_from_data(
+        data: Arc<Vec<u8>>,
+        face_index: u32,
+        pt_size: Option<Au>,
+    ) -> Result<PlatformFont, &'static str> {
+        let face = create_face(data.clone(), face_index, pt_size)?;
         let mut handle = PlatformFont {
             face,
-            font_data: template.borrow().data_if_in_memory(),
+            font_data: data,
             can_do_fast_shaping: false,
         };
+
         // TODO (#11310): Implement basic support for GPOS and GSUB.
         handle.can_do_fast_shaping =
             handle.has_table(KERN) && !handle.has_table(GPOS) && !handle.has_table(GSUB);
+
         Ok(handle)
     }
 

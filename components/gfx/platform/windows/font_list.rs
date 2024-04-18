@@ -51,7 +51,8 @@ impl LocalFontIdentifier {
     }
 
     pub fn index(&self) -> u32 {
-        self.direct_write_font().map_or(0, |font| font.create_font_face().get_index())
+        self.direct_write_font()
+            .map_or(0, |font| font.create_font_face().get_index())
     }
 
     pub(crate) fn read_data_from_file(&self) -> Vec<u8> {

@@ -21,7 +21,7 @@ use embedder_traits::Cursor;
 use euclid::{Point2D, Rect, Scale, Transform3D, Vector2D};
 use fnv::{FnvHashMap, FnvHashSet};
 use gfx::rendering_context::RenderingContext;
-use gfx_traits::{Epoch, FontData, WebRenderEpochToU16};
+use gfx_traits::{Epoch, WebRenderEpochToU16};
 use image::{DynamicImage, ImageFormat};
 use ipc_channel::ipc;
 use libc::c_void;
@@ -877,13 +877,17 @@ impl<Window: WindowMethods + ?Sized> IOCompositor<Window> {
                 let _ = sender.send(key);
             },
 
-            ForwardedToCompositorMsg::Font(FontToCompositorMsg::AddFont(key_sender, index, bytes_receiver)) => {
+            ForwardedToCompositorMsg::Font(FontToCompositorMsg::AddFont(
+                key_sender,
+                index,
+                bytes_receiver,
+            )) => {
                 let font_key = self.webrender_api.generate_font_key();
                 let mut txn = Transaction::new();
                 let bytes = bytes_receiver.recv().unwrap();
-                println!("Compositor: AddFont with index {index}");
                 txn.add_raw_font(font_key, bytes, index);
-                self.webrender_api.send_transaction(self.webrender_document, txn);
+                self.webrender_api
+                    .send_transaction(self.webrender_document, txn);
                 let _ = key_sender.send(font_key);
             },
 
