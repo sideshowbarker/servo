@@ -254,7 +254,9 @@ impl FontCache {
                     let templates = &mut self.web_families.get_mut(&family_name).unwrap();
 
                     let data = Arc::new(bytes);
-                    let Ok(handle) = PlatformFont::new_from_data(data.clone(), 0, None) else {
+                    let identifier = FontIdentifier::Web(url.clone());
+                    let Ok(handle) = PlatformFont::new_from_data(identifier, data.clone(), 0, None)
+                    else {
                         drop(result.send(()));
                         return;
                     };

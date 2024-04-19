@@ -202,6 +202,7 @@ impl<T> Deref for Nondebug<T> {
 
 impl PlatformFontMethods for PlatformFont {
     fn new_from_data(
+        _font_identifier: FontIdentifier,
         data: Arc<Vec<u8>>,
         face_index: u32,
         pt_size: Option<Au>,

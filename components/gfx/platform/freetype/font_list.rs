@@ -162,24 +162,6 @@ where
     }
 }
 
-fn apply_font_config_to_style_mapping(mapping: &[(f64, f64)], value: f64) -> f64 {
-    if value < mapping[0].0 {
-        return mapping[0].1;
-    }
-
-    for window in mapping.windows(2) {
-        let (font_config_value_a, css_value_a) = window[0];
-        let (font_config_value_b, css_value_b) = window[1];
-
-        if value >= font_config_value_a && value <= font_config_value_b {
-            let ratio = (value - font_config_value_a) / (font_config_value_b - font_config_value_a);
-            return css_value_a + ((css_value_b - css_value_a) * ratio);
-        }
-    }
-
-    mapping[mapping.len() - 1].1
-}
-
 pub fn system_default_family(generic_name: &str) -> Option<String> {
     let generic_name_c = CString::new(generic_name).unwrap();
     let generic_name_ptr = generic_name_c.as_ptr();
@@ -274,7 +256,7 @@ fn font_stretch_from_fontconfig_pattern(pattern: *mut FcPattern) -> Option<FontS
         (FC_WIDTH_ULTRAEXPANDED as f64, 2.00),
     ];
 
-    let mapped_width = apply_font_config_to_style_mapping(&mapping, width as f64);
+    let mapped_width = map_platform_values_to_style_values(&mapping, width as f64);
     Some(FontStretch::from_percentage(mapped_width as f32))
 }
 
@@ -294,6 +276,6 @@ fn font_weight_from_fontconfig_pattern(pattern: *mut FcPattern) -> Option<FontWe
         (FC_WEIGHT_EXTRABLACK as f64, 1000 as f64),
     ];
 
-    let mapped_weight = apply_font_config_to_style_mapping(&mapping, weight as f64);
+    let mapped_weight = map_platform_values_to_style_values(&mapping, weight as f64);
     Some(FontWeight::from_float(mapped_weight as f32))
 }
